@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MM — ARCHIVE DECONSTRUCTOR</title>
+<style>
+:root{--w:#FFFFFF;--k:#0D0D0D;--g:#888;--f:#D0D0D0;--r:#FF0000;--font:'Courier New',Courier,monospace;--strip:90px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--w);font-family:var(--font)}
+
+/* ── CANVAS ─────────────────────────── */
+#cvs{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+/* ── GHOST LAYER ────────────────────── */
+#ghost{position:fixed;inset:0;z-index:1;background:center/cover no-repeat;opacity:0;pointer-events:none;transition:opacity 1.2s ease;filter:grayscale(100%) contrast(1.05)}
+
+/* ── SVG OVERLAY ────────────────────── */
+#svgl{position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;overflow:visible}
+.svg-tick{stroke:var(--r);stroke-width:.5;fill:none;stroke-dasharray:120;stroke-dashoffset:120;transition:stroke-dashoffset .8s cubic-bezier(.16,1,.3,1)}
+.svg-tick.draw{stroke-dashoffset:0}
+.svg-dot{fill:var(--r)}
+.svg-lbl{font:5.5px var(--font);letter-spacing:.14em;fill:var(--r);text-transform:uppercase}
+.svg-rel{font:4.5px var(--font);letter-spacing:.1em;fill:var(--g)}
+
+/* ── FILM STRIP · mobile ────────────── */
+#film{
+  display:flex;flex-direction:column;align-items:center;
+  position:fixed;top:0;right:0;bottom:0;left:auto;
+  width:62vw;z-index:10;
+  overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;
+  padding:7.5vh 0;scrollbar-width:none;
+}
+#film::-webkit-scrollbar{display:none}
+.fc{
+  scroll-snap-align:center;flex-shrink:0;
+  width:min(220px,calc(100% - 12px));height:50vh;
+  position:relative;cursor:pointer;user-select:none;-webkit-user-select:none;
+}
+.fc-img{width:100%;height:100%;object-fit:cover;display:block;filter:grayscale(100%) contrast(1.1);transition:filter .9s ease}
+.fc.on .fc-img{filter:grayscale(5%)}
+.fc-bar{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--r);transform:scaleY(0);transform-origin:top;transition:transform .7s cubic-bezier(.16,1,.3,1)}
+.fc.on .fc-bar{transform:scaleY(1)}
+.fc-num{position:absolute;top:10px;left:8px;font:5px/1 var(--font);letter-spacing:.2em;color:rgba(255,255,255,.75);z-index:2;text-transform:uppercase}
+.fc-acad{
+  position:absolute;bottom:0;left:0;right:0;
+  background:linear-gradient(transparent,rgba(255,255,255,.92));
+  padding:32px 12px 10px;
+  font:5.5px/2 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--g);
+  opacity:0;transition:opacity .5s;pointer-events:none;
+}
+.fc.on .fc-acad{opacity:1}
+
+/* ── DESKTOP APP ────────────────────── */
+#app{display:none;position:fixed;inset:0;z-index:10;flex-direction:row}
+
+/* Visual strip */
+#strip{
+  width:var(--strip);height:100%;
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:40px 0;position:relative;
+  background:rgba(255,255,255,.96);border-right:.4px solid var(--f);flex-shrink:0;
+}
+#strip::before{content:'';position:absolute;left:50%;top:56px;bottom:56px;width:.35px;background:var(--k);opacity:.45}
+.vs-node{width:62px;height:78px;position:relative;cursor:pointer;overflow:hidden;flex-shrink:0}
+.vs-img{width:100%;height:100%;object-fit:cover;display:block;filter:grayscale(100%) contrast(1.1);transition:filter .4s,transform .5s}
+.vs-node:hover .vs-img,.vs-node.on .vs-img{filter:grayscale(0%);transform:scale(1.05)}
+.vs-node::after{content:attr(data-num);position:absolute;bottom:4px;left:5px;font:5px/1 var(--font);letter-spacing:.14em;color:rgba(255,255,255,.8);text-shadow:0 0 4px rgba(0,0,0,.5)}
+.vs-node::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--r);transform:scaleY(0);transform-origin:top;transition:transform .45s cubic-bezier(.16,1,.3,1);z-index:2}
+.vs-node.on::before{transform:scaleY(1)}
+
+/* Viz */
+#viz{flex:1;position:relative;overflow:hidden}
+
+/* Callout */
+#co{position:absolute;top:36px;right:32px;width:276px;opacity:0;transition:opacity .35s;pointer-events:none;z-index:20}
+#co.show{opacity:1;pointer-events:all}
+.co-imgs{display:flex;gap:4px;margin-bottom:12px;height:116px}
+.co-img{flex:1;object-fit:cover;cursor:pointer;border:.4px solid var(--f);transition:filter .3s;filter:grayscale(15%);display:block}
+.co-img:hover{filter:grayscale(0%)}
+.co-id{font-size:6px;letter-spacing:.28em;color:var(--r);text-transform:uppercase;margin-bottom:5px}
+.co-name{font-size:13px;letter-spacing:.07em;text-transform:uppercase;line-height:1.2;margin-bottom:7px}
+.co-concept{font-size:6.5px;color:var(--g);letter-spacing:.08em;line-height:1.9;margin-bottom:9px;border-top:.4px solid var(--f);padding-top:9px}
+.co-acad{font-size:5.5px;letter-spacing:.18em;color:var(--r);text-transform:uppercase;line-height:2;margin-bottom:10px}
+.co-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:11px}
+.co-stat label{display:block;font-size:5px;letter-spacing:.2em;text-transform:uppercase;color:var(--g);margin-bottom:2px}
+.co-stat span{font-size:10px;color:var(--k)}
+.co-conn{font-size:6px;letter-spacing:.12em;text-transform:uppercase;color:var(--g);margin-bottom:11px;line-height:1.9}
+.co-conn b{color:var(--k);font-weight:normal}.co-conn span{color:var(--r)}
+.co-btn{display:inline-block;font-size:6px;letter-spacing:.22em;text-transform:uppercase;border:.4px solid var(--k);padding:6px 11px;cursor:pointer;transition:background .2s,color .2s}
+.co-btn:hover{background:var(--k);color:var(--w)}
+#narr{position:absolute;bottom:40px;left:12px;right:300px;font:7px/2 var(--font);letter-spacing:.09em;color:var(--g);font-style:italic;pointer-events:none;max-width:520px;opacity:.7;transition:opacity .5s}
+
+/* ── MODAL — full-screen editorial ── */
+#mveil{position:fixed;inset:0;background:transparent;z-index:300;opacity:0;pointer-events:none;transition:opacity .4s}
+#mveil.open{opacity:1;pointer-events:all}
+#modal{
+  position:fixed;inset:0;background:rgba(255,255,255,0.88);
+  z-index:301;opacity:0;pointer-events:none;
+  transition:opacity .45s cubic-bezier(.16,1,.3,1);
+  overflow-y:auto;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  grid-template-rows:auto auto;
+  align-items:start;
+}
+#modal.open{opacity:1;pointer-events:all}
+
+/* Top bar */
+.m-topbar{
+  grid-column:1/-1;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:22px 48px;border-bottom:.4px solid var(--f);
+  position:sticky;top:0;background:rgba(255,255,255,0.96);z-index:10;
+}
+.m-topbar-left{display:flex;align-items:baseline;gap:20px}
+.m-id{font-size:7px;letter-spacing:.28em;color:var(--r);text-transform:uppercase}
+.m-title{font-size:28px;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+.mcl-x{font-size:7px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;color:var(--g);transition:color .2s;white-space:nowrap}
+.mcl-x:hover{color:var(--r)}
+
+/* Left column: image gallery — scrolls with modal */
+#m-left{
+  padding:0;
+  border-right:.4px solid var(--f);
+}
+.m-gallery{padding:0}
+.m-gal-section{margin-bottom:2px}
+.m-gal-label{font-size:6px;letter-spacing:.2em;text-transform:uppercase;color:var(--g);padding:10px 12px 6px;border-bottom:.4px solid var(--f)}
+.m-gal-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:2px;padding:2px}
+.m-gal-grid img{width:100%;aspect-ratio:.85;object-fit:cover;cursor:pointer;transition:opacity .3s;display:block}
+.m-gal-grid img:hover{opacity:.82}
+
+/* Right column: sticky editorial panel */
+#m-right{padding:48px 52px 80px;position:sticky;top:65px;max-height:calc(100vh - 65px);overflow-y:auto;}
+.m-concept{font-size:11px;color:var(--g);letter-spacing:.09em;line-height:1.9;margin-bottom:36px;border-bottom:.4px solid var(--f);padding-bottom:28px}
+
+/* Narrative */
+.m-narr-label{font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--g);margin-bottom:16px}
+.m-narrative{font-size:15px;line-height:1.85;color:var(--k);margin-bottom:40px;border-bottom:.4px solid var(--f);padding-bottom:36px;font-weight:300}
+
+/* Academic terms */
+.m-acad{margin-bottom:40px;border-bottom:.4px solid var(--f);padding-bottom:36px}
+.m-acad-head,.m-conn-head{font-size:7px;letter-spacing:.3em;text-transform:uppercase;color:var(--g);margin-bottom:18px}
+.m-acad-terms{display:flex;flex-wrap:wrap;gap:10px}
+.m-acad-term{
+  font-size:10px;letter-spacing:.12em;padding:10px 16px;
+  border:.4px solid var(--k);color:var(--k);text-transform:uppercase;
+  transition:background .2s,color .2s;cursor:default;
+}
+.m-acad-term:hover{background:var(--k);color:var(--w)}
+
+/* DNA Connections */
+.m-conn{margin-bottom:40px;border-bottom:.4px solid var(--f);padding-bottom:36px}
+.m-conn-item{
+  display:flex;gap:20px;padding:18px 0;
+  border-bottom:.4px solid var(--f);
+}
+.m-conn-item:last-child{border-bottom:none}
+.m-conn-num{font-size:32px;color:var(--f);letter-spacing:-.04em;flex-shrink:0;line-height:1}
+.m-conn-body{}
+.m-conn-lbl{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--k);margin-bottom:6px}
+.m-conn-desc{font-size:11px;color:var(--g);line-height:1.7;letter-spacing:.03em}
+
+/* Stats */
+.m-stats{display:flex;gap:40px;margin-bottom:32px}
+.m-stat-block{}
+.m-sn{font-size:44px;letter-spacing:-.04em;color:var(--k);display:block;line-height:1}
+.m-sl{font-size:7px;letter-spacing:.26em;text-transform:uppercase;color:var(--g);margin-top:4px;display:block}
+.m-media{font-size:10px;letter-spacing:.1em;color:var(--g);margin-bottom:36px;line-height:1.9;border-bottom:.4px solid var(--f);padding-bottom:28px}
+.m-media span{color:var(--k)}
+
+/* Technical files — collapsed by default */
+.m-files-toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;padding:14px 0;border-top:.4px solid var(--f);
+  font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--g);
+  transition:color .2s;user-select:none;
+}
+.m-files-toggle:hover{color:var(--k)}
+.m-files-toggle b{color:var(--k);font-weight:normal}
+.m-toggle-arrow{transition:transform .3s;display:inline-block}
+.m-files-toggle.open .m-toggle-arrow{transform:rotate(180deg)}
+#m-body{display:none}
+#m-body.open{display:block}
+.m-sf{margin-bottom:20px;padding-top:16px}
+.m-sf-h{font-size:8px;letter-spacing:.2em;text-transform:uppercase;padding-bottom:8px;margin-bottom:10px;border-bottom:.4px solid var(--f);display:flex;justify-content:space-between;color:var(--k)}
+.m-sf-c{color:var(--g)}
+.m-file{display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:.4px solid #f4f4f4;font-size:9px;letter-spacing:.04em;color:#555;line-height:1.6}
+.xt{font-size:6px;letter-spacing:.08em;text-transform:uppercase;padding:2px 5px;border:.3px solid currentColor;flex-shrink:0;min-width:24px;text-align:center}
+.xj{color:#bbb}.xv{color:var(--r)}.xp{color:#666}.xm{color:#999}.xn{color:#aaa}
+
+/* ── SANDWICH BOARD · SS99 ──────────── */
+#board{position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.97);opacity:0;pointer-events:none;transition:opacity .5s}
+#board.show{opacity:1;pointer-events:all}
+.board-inner{max-width:380px;padding:48px 40px;border:.4px solid var(--k);text-align:center;white-space:pre-line;font:9px/2.6 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--k)}
+.board-label{font-size:5.5px;letter-spacing:.32em;color:var(--r);display:block;margin-bottom:20px}
+.board-sub{font-size:5.5px;letter-spacing:.2em;color:var(--g);display:block;margin-top:20px}
+.board-x{display:block;margin-top:24px;font-size:5.5px;letter-spacing:.22em;color:var(--g);cursor:pointer}
+.board-x:hover{color:var(--r)}
+
+/* ── EXHIBITION TICKER ───────────────── */
+#ticker{position:fixed;bottom:0;left:0;right:0;height:28px;background:var(--w);border-top:.4px solid var(--f);z-index:200;overflow:hidden;display:flex;align-items:center}
+.tick-wrap{display:flex;animation:tick 36s linear infinite;white-space:nowrap}
+.tick-item{font:5.5px/1 var(--font);letter-spacing:.2em;text-transform:uppercase;color:var(--g);padding:0 52px}
+.tick-city{color:var(--k)}.tick-live{color:var(--r)}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ── INFO BAR ───────────────────────── */
+#info{position:fixed;top:0;right:0;font:5.5px/1 var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--g);padding:10px 14px;z-index:50;display:flex;gap:20px}
+#info b{color:var(--k);font-weight:normal}
+
+/* ── LIGHTBOX ───────────────────────── */
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:900;display:none;align-items:center;justify-content:center;cursor:zoom-out}
+#lb.open{display:flex}
+#lb img{max-width:88vw;max-height:88vh;object-fit:contain}
+#lb-x{position:absolute;top:20px;right:24px;color:#fff;font-size:6.5px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
+
+/* ── INTRO ──────────────────────────── */
+#intro{position:fixed;inset:0;background:var(--w);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:999;transition:opacity .8s}
+#intro.out{opacity:0;pointer-events:none}
+.iline{height:.4px;background:var(--k);width:0;animation:gl 1.5s cubic-bezier(.16,1,.3,1) forwards}
+.iline:nth-child(2){animation-delay:.1s;animation-duration:1.3s;opacity:.3}
+.iline:nth-child(3){animation-delay:.2s;animation-duration:1.1s;opacity:.15}
+@keyframes gl{to{width:110px}}
+.itxt{font-size:6px;letter-spacing:.32em;text-transform:uppercase;color:var(--g);opacity:0;animation:fi .8s .7s forwards}
+@keyframes fi{to{opacity:1}}
+
+/* ── LONG-PRESS RIPPLE ───────────────── */
+@keyframes ripple{0%{transform:scale(0);opacity:.7}100%{transform:scale(5);opacity:0}}
+.rip{position:fixed;width:36px;height:36px;margin:-18px 0 0 -18px;border:.5px solid var(--r);border-radius:50%;pointer-events:none;z-index:599;animation:ripple .55s ease-out forwards}
+
+/* ── DESKTOP BREAKPOINT ──────────────── */
+@media(min-width:768px){
+  #film{display:none}
+  #app{display:flex}
+}
+
+/* ── MODAL MOBILE ────────────────────── */
+@media(max-width:767px){
+  #modal{
+    grid-template-columns:1fr;
+  }
+  .m-topbar{padding:14px 18px}
+  .m-title{font-size:18px}
+  #m-left{border-right:none;border-bottom:.4px solid var(--f)}
+  #m-right{position:static;max-height:none;overflow-y:visible;padding:28px 20px 60px}
+}
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <div class="iline"></div><div class="iline"></div><div class="iline"></div>
+  <div class="itxt">Maison Margiela · Archive Deconstructor · FW 1989–2026</div>
+</div>
+
+<canvas id="cvs"></canvas>
+<div id="ghost"></div>
+<svg id="svgl" viewBox="0 0 1000 800" preserveAspectRatio="none"></svg>
+
+<!-- MOBILE: Film Strip -->
+<div id="film"></div>
+
+<!-- DESKTOP: App -->
+<div id="app">
+  <div id="strip"></div>
+  <div id="viz">
+    <div id="narr">Since 1989, Maison Margiela has posed a single question through every collection: what remains when the surface is stripped away? The seven folders are not categories — they are one argument, told from seven angles.</div>
+    <div id="co">
+      <div class="co-imgs" id="co-imgs"></div>
+      <div class="co-id" id="co-id">—</div>
+      <div class="co-name" id="co-name">—</div>
+      <div class="co-concept" id="co-concept">—</div>
+      <div class="co-acad" id="co-acad"></div>
+      <div class="co-grid">
+        <div class="co-stat"><label>Total Files</label><span id="co-files">—</span></div>
+        <div class="co-stat"><label>Date Range</label><span id="co-dates">—</span></div>
+        <div class="co-stat"><label>Media Types</label><span id="co-med">—</span></div>
+        <div class="co-stat"><label>Connects To</label><span id="co-ct">—</span></div>
+      </div>
+      <div class="co-conn" id="co-conn"></div>
+      <div class="co-btn" id="co-btn">Deconstruct Archive →</div>
+    </div>
+  </div>
+</div>
+
+<!-- SS99 Sandwich Board -->
+<div id="board">
+  <div class="board-inner">
+    <span class="board-label">SS99 · TECHNICIAN PROTOCOL</span>
+    <span id="board-text"></span>
+    <span class="board-sub" id="board-acad"></span>
+    <span class="board-x" onclick="closeBoard()">[ DISMISS ]</span>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="mveil"></div>
+<div id="modal">
+  <!-- Sticky top bar -->
+  <div class="m-topbar">
+    <div class="m-topbar-left">
+      <span class="m-id" id="m-id">—</span>
+      <span class="m-title" id="m-title">—</span>
+    </div>
+    <span class="mcl-x" id="mcl-x">✕ &nbsp;Close</span>
+  </div>
+  <!-- Left: images -->
+  <div id="m-left">
+    <div class="m-gallery" id="m-gal"></div>
+  </div>
+  <!-- Right: editorial content -->
+  <div id="m-right">
+    <div class="m-concept" id="m-conc"></div>
+    <div class="m-narr-label">Narrative</div>
+    <div class="m-narrative" id="m-narr"></div>
+    <div class="m-acad" id="m-acad"></div>
+    <div class="m-conn" id="m-conn"></div>
+    <div class="m-stats" id="m-stat"></div>
+    <div class="m-media" id="m-med"></div>
+    <!-- Technical files — collapsed -->
+    <div class="m-files-toggle" id="m-toggle">
+      <span>Technical Data <b id="m-toggle-count"></b></span>
+      <span class="m-toggle-arrow">↓</span>
+    </div>
+    <div id="m-body"></div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lb"><span id="lb-x">✕ Close</span><img id="lb-img" src="" alt=""></div>
+
+<!-- Exhibition Ticker -->
+<div id="ticker"><div class="tick-wrap" id="tick-wrap"></div></div>
+
+<!-- Info bar -->
+<div id="info">
+  <span>532 Files</span><span>7 Collections</span>
+  <span id="info-a">Active: <b>—</b></span>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   BASE PATH & IMAGES
+═══════════════════════════════════════════════ */
+const B='imgs/';
+const enc=s=>s.replace(/ /g,'%20').replace(/&/g,'%26');
+
+/* ═══════════════════════════════════════════════
+   GALLERY — every image, grouped by subfolder
+═══════════════════════════════════════════════ */
+const P1='1_Maison Margiela folders Announcement/';
+const P2='2_Preparation & Teaser/';
+const P3='3_Fall-Winter 2026 Show/';
+const P4='4_Artisanal Exhibition/';
+const P5='5_Anonymity Exhibition/';
+const P6='6_Tabi Exhibition/';
+const P7='7_Bianchetto Experience/';
+
+const GALLERY={
+  '01':[
+    {g:'Project Logo',f:[
+      B+enc(P1+'1_Project Logo/MM_Folders_Logo_Dropbox.jpg'),
+      B+enc(P1+'1_Project Logo/MM_Folders_Logo_Link.jpg'),
+      B+enc(P1+'1_Project Logo/MM_Folders_Logo.png'),
+    ]},
+    {g:'Printed Archive',f:[
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_01.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_02.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_03.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_04.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_05.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_06.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_07.jpg'),
+      B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_08.jpg'),
+    ]},
+    {g:'Digital Archive · Artisanal',f:[
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Arnaud Lajeunie_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Arnaud Lajeunie_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Arnaud Lajeunie_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Arnaud Lajeunie_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Bill Cunningham.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Britt Lloyd_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Britt Lloyd_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Britt Lloyd_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Edouard Caupeil.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_05.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_06.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_07.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Giovanni Giannoni_08.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_05.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_06.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_07.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_08.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_09.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_10.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_11.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Marina Faust_12.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Melanie & Ramon_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Melanie & Ramon_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Melanie & Ramon_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Melanie & Ramon_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_MM.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/1_MM_Folders_Artisanal_Raf Coolen.jpg'),
+    ]},
+    {g:'Digital Archive · Anonymity',f:[
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Anders Edström_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Anders Edström_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Arnaud Lajeunie.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_05.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_06.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Edouard Caupeil_07.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_05.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_06.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Giovanni Giannoni_07.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Marina Faust_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Marina Faust_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_04.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_05.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_06.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Melanie & Ramon_07.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_MM.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Raf Coolen.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Tyrone Lebon_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/2_MM_Folders_Anonymity_Tyrone Lebon_02.jpg'),
+    ]},
+    {g:'Digital Archive · Tabi',f:[
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Anders Edström.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Bill Cunningham.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Melanie & Ramon_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Melanie & Ramon_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_MM_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_MM_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Raf Coolen.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Tatsuya Kitayama_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Tatsuya Kitayama_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/3_MM_Folders_Tabi_Tyrone Lebon.jpg'),
+    ]},
+    {g:'Digital Archive · Bianchetto',f:[
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Anders Edström_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Anders Edström_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Giovanni Giannoni_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Giovanni Giannoni_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Giovanni Giannoni_03.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Melanie & Ramon_01.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Melanie & Ramon_02.jpg'),
+      B+enc(P1+'2_Archive Research/02 Digital Archive/4_MM_Folders_Bianchetto_Melanie & Ramon_03.jpg'),
+    ]},
+    {g:'Save The Date',f:[
+      B+enc(P1+'3_Save The Date/MM_Folders_Save_The_Date_2026.jpg'),
+    ]},
+  ],
+  '02':[
+    {g:'Shipping Forms',f:[
+      B+enc(P2+'3_Packing Documentation/01 Shipping Forms/MM_Folders_Anonymity_Shipping Form_01.jpg'),
+      B+enc(P2+'3_Packing Documentation/01 Shipping Forms/MM_Folders_Anonymity_Shipping Form_02.jpg'),
+      B+enc(P2+'3_Packing Documentation/01 Shipping Forms/MM_Folders_Anonymity_Shipping Form_03.jpg'),
+      B+enc(P2+'3_Packing Documentation/01 Shipping Forms/MM_Folders_Artisanal_Shipping Form_01.jpg'),
+      B+enc(P2+'3_Packing Documentation/01 Shipping Forms/MM_Folders_Artisanal_Shipping Form_02.jpg'),
+      B+enc(P2+'3_Packing Documentation/01 Shipping Forms/MM_Folders_Artisanal_Shipping Form_03.jpg'),
+    ]},
+    {g:'Packing Documentation',f:[
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_1.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_2.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_3.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_4.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_5.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_6.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_7.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_8.jpg'),
+      B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_9.jpg'),
+    ]},
+    {g:'Teaser · Artisanal',f:Array.from({length:12},(_,i)=>B+enc(P2+'4_Teaser Assets/01 Artisanal Looks Selection/MM_Folders_Artisanal_Teaser_'+(i+1)+'.jpg'))},
+    {g:'Teaser · Anonymity Masks',f:Array.from({length:6},(_,i)=>B+enc(P2+'4_Teaser Assets/02 Masks Selection/MM_Folders_Anonymity_Teaser_'+(i+1)+'.jpg'))},
+    {g:'Teaser · Tabi Collectors',f:Array.from({length:6},(_,i)=>B+enc(P2+'4_Teaser Assets/03 Tabi Collectors Preview/MM_Folders_Tabi_Teaser_'+(i+1)+'.jpg'))},
+    {g:'Teaser · Bianchetto How-To',f:Array.from({length:5},(_,i)=>B+enc(P2+'4_Teaser Assets/04 Bianchetto How-To/MM_Folders_Bianchetto_Teaser_'+(i+1)+'.jpg'))},
+  ],
+  '03':[
+    {g:'Teaser',f:[
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_1.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_2.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_3.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_5.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_9.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_10.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_11.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_12.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_13.jpg'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_16.JPG'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_17.JPG'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_18.JPG'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_19.JPG'),
+      B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_20.JPG'),
+    ]},
+    {g:'Invitation',f:[
+      B+enc(P3+'2_Planning/01 Invitation/MM_Folders_FW26 Show_invitation_01.jpg'),
+      B+enc(P3+'2_Planning/01 Invitation/MM_Folders_FW26 Show_invitation_02.jpg'),
+    ]},
+    {g:'Fittings',f:[
+      ...Array.from({length:8},(_,i)=>B+enc(P3+'3_Fittings/MM_Folders_FW26 Show_Fittings_3x4_'+(i+1)+'.jpg')),
+      B+enc(P3+'3_Fittings/MM_FW26 Show_Carrousel_1_Fitting_9.jpg'),
+    ]},
+    {g:'Collection Looks 001–076',f:Array.from({length:76},(_,i)=>B+enc(P3+'4_Looks/01 Full Looks/MM_Folders_FW26 Show Look_'+String(i+1).padStart(4,'0')+'.jpg'))},
+    {g:'Hero Looks',f:[
+      ...Array.from({length:9},(_,i)=>B+enc(P3+'4_Looks/03 Hero Looks Shoot/MM_Folders_FW26 Show_Hero Looks_3x4_'+(i+1)+'.jpg')),
+      B+enc(P3+'4_Looks/03 Hero Looks Shoot/MM_Folders_FW26 Show_Hero Looks3x4_11.jpg'),
+      B+enc(P3+'4_Looks/03 Hero Looks Shoot/MM_Folders_FW26 Show_Hero Looks3x4_12.jpg'),
+    ]},
+    {g:'Venue · Empty Set',f:[
+      B+enc(P3+'9_Venue/MM_Folders_FW26 Show_Empty Set_3x4_1.jpg'),
+      B+enc(P3+'9_Venue/MM_Folders_FW26 Show_Empty Set_3x4_2.jpg'),
+      B+enc(P3+'9_Venue/MM_Folders_FW26 Show_Empty Set_3x4_3.jpg'),
+      B+enc(P3+'9_Venue/MM_Folders_FW26 Show_Empty Set_3x4_4.jpg'),
+    ]},
+  ],
+  '04':[
+    {g:'Archive Research',f:[
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_SS90.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2005.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW05.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_FW05.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW06_01.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW06_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW06_Invitation.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_FW06_Ski Jacket.jpg'),
+      B+enc(P4+"1_Artisanal_Initial Research/MM_Folders_Artisanal_L'Officiel_2006.jpg"),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Le Figaro_2006.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW07_01.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW07_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW08_01.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_AW08_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_SS06_01.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_SS06_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_SS06_03.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_SS08.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Spring 2012.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Fall 2014_Fittings_Look 1.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Fall 2014_Fittings_Look 4.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Fall 2014_Fittings_Look 8.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Fall 2014_Process.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Spring 2015_Look 1.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Fall 2017_Look 10.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Spring 2017_Look 19.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Spring 2017_Look 24.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Spring 2017_Look 25.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2022_Look 19.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2022_Look 31.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2022_Look 58.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Exhibition.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Exhibition_Look 21.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Fitting Book_Look 17.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Fitting Book_Look 4.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Inspiration Books.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Invitation.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Look 21.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_Look 27.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2024_X-ray Dress.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2025_Close-up.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2025_Invitation.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2025_Look 1.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2025_Look 16.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2025_Look 20.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_2025_Look 39.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Le Figaro_2025.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Atelier Process.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Atelier Process_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Atelier Process_03.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Atelier_01.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Atelier_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Atelier_03.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Rue St Maur.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Rue St Maur Atelier_01.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Rue St Maur Atelier_02.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_MM HQ.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Process.jpg'),
+      B+enc(P4+'1_Artisanal_Initial Research/MM_Folders_Artisanal_Team.jpg'),
+    ]},
+    {g:'Look Preview',f:Array.from({length:12},(_,i)=>B+enc(P4+'2_Artisanal_Teaser_Look_Preview/MM_Folders_Artisanal_Teaser_'+(i+1)+'.jpg'))},
+  ],
+  '05':[
+    {g:'Archive Research',f:[
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_SS89.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_1989.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Spring_1989.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_SS93.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Spring_1996.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_FW94_01.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_FW94_02.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_FW95_01.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_FW95_02.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_AW00_.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_SS09_Look 2.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_SS09_Look 28.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_SS09_Look 29.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_SS09_Backstage.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2022.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2024_Look 27.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2024_Look 29.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 4.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 19.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 22.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 31.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 37.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 40 & 41.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_2025_Look 49.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Fall 2013_Look 1.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Fall 2013_Look 4.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Spring 2012_Look 3.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Spring 2013_Look 4.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Spring 2013_Look 7.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Spring 2013_Backstage.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Artisanal_Spring 2014_Look 19.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Co-Ed_SS21.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Co-Ed_SS21_Look 5.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Co-Ed_SS21_Look 9.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Co-Ed_SS21_Look 40.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Co-Ed_SS26_Look 5.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Co-Ed_SS26_Look 42.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Line 0_2025.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Line 1_2025.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Line 4_2025.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Line 14_2025.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Holiday_2025_01.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Holiday_2025_02.jpg'),
+      B+enc(P5+'1_Anonymity_Initial Research/MM_Folders_Anonymity_Atelier Process.jpg'),
+    ]},
+    {g:'Mask Preview',f:Array.from({length:6},(_,i)=>B+enc(P5+'2_Anonymity_Teaser_Mask_Preview/MM_Folders_Anonymity_Teaser_'+(i+1)+'.jpg'))},
+  ],
+  '06':[
+    {g:'Archive Research',f:[
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_AW89.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS89.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS90.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS91.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_1991.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS92.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS94.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS96.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_AW95.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_1998.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_AW03.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Archive Shoe_AW03.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS04.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_2012.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Artisanal AW12.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Backstage_AW14.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_2018.png'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Galliera_2010.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Ebisu.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Line 22.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_SS26 AVP.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Artisanal 2025_01.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Artisanal 2025_02.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Collectors Series_Item 01_2025.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Archive Shoe.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi_Archive Storage.jpg'),
+      B+enc(P6+'1_Tabi_Initial Research/MM_Folders_Tabi.jpg'),
+    ]},
+    {g:'Collectors Preview',f:Array.from({length:6},(_,i)=>B+enc(P6+'2_Tabi_Teaser_Collectors_Preview/MM_Folders_Tabi_Teaser_'+(i+1)+'.jpg'))},
+  ],
+  '07':[
+    {g:'Archive Research',f:[
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_1992.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_SS92.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_SS99.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_2013.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW96_01.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW96_02.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW17.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW19.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_SS20.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Co-Ed_SS16.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Co-Ed_SS20_Look 13.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Co-Ed_SS24_01.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Co-Ed_SS24_02.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Co-Ed_SS24_03.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Artisanal 2025_Look 7.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Artisanal_2025_Look 4.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Artisanal_2025_Look 5.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Artisanal_Fall 2019_Look 4.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Artisanal_Spring 2013_Look 2.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW25 AVP_5AC.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW25 AVP_Miley Cyrus.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_AW25 AVP_Tabi.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_MMxReebok_2021.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Signature White_2022_01.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Signature White_2022_02.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto_Icons Collection.jpg'),
+      B+enc(P7+'1_Bianchetto_Initial Research/MM_Folders_Bianchetto.jpg'),
+    ]},
+    {g:'How-To Preview',f:Array.from({length:5},(_,i)=>B+enc(P7+'2_Bianchetto_Teaser_How-to_Preview/MM_Folders_Bianchetto_Teaser_'+(i+1)+'.jpg'))},
+  ],
+};
+
+/* Images: all images per folder, flattened from GALLERY */
+const IMG={};
+
+const THUMBS={
+  '01':B+enc(P1+'2_Archive Research/01 Printed Archive/MM_Folders_Printed_Research_01.jpg'),
+  '02':B+enc(P2+'3_Packing Documentation/02 Packing/MM_Folders_Packing_1.jpg'),
+  '03':B+enc(P3+'1_Teaser/MM_Folders_FW26 Show_Teaser_1.jpg'),
+  '04':B+enc(P4+'2_Artisanal_Teaser_Look_Preview/MM_Folders_Artisanal_Teaser_1.jpg'),
+  '05':B+enc(P5+'2_Anonymity_Teaser_Mask_Preview/MM_Folders_Anonymity_Teaser_1.jpg'),
+  '06':B+enc(P6+'2_Tabi_Teaser_Collectors_Preview/MM_Folders_Tabi_Teaser_1.jpg'),
+  '07':B+enc(P7+'2_Bianchetto_Teaser_How-to_Preview/MM_Folders_Bianchetto_Teaser_1.jpg'),
+};
+
+/* Populate IMG from GALLERY */
+Object.keys(GALLERY).forEach(id=>{IMG[id]=GALLERY[id].flatMap(g=>g.f);});
+
+/* ═══════════════════════════════════════════════
+   ACADEMIC TERMS  (Phase 4)
+═══════════════════════════════════════════════ */
+const ACADEMIC={
+  '01':['Archival Fetishism','Fashion Archaeology','Object Permanence'],
+  '02':['Liminal Materiality','Preparatory Gesture','Pre-Formation'],
+  '03':['Anomalous Temporality','Spectacle Theory','Gaze Deconstruction'],
+  '04':['Commodity Fetishism','Artisanal Labor Theory','Manual Semiotics'],
+  '05':['Anonymity Praxis','The Blank Signifier','Identity Erasure'],
+  '06':['Podal Semiotics','Bifurcation Theory','Ground Zero Aesthetics'],
+  '07':['Surface Erasure','Negative Space Theory','Distressed Materiality'],
+};
+
+/* ═══════════════════════════════════════════════
+   2026 CHINA TOUR  (Phase 4 · live data layer)
+═══════════════════════════════════════════════ */
+const EXHIBITIONS=[
+  {city:'Shanghai',venue:'TANK Shanghai',date:'2026.03.15',status:'ACTIVE'},
+  {city:'Beijing',venue:'UCCA',date:'2026.04.28',status:'UPCOMING'},
+  {city:'Chengdu',venue:'A4 Arts Museum',date:'2026.06.10',status:'UPCOMING'},
+  {city:'Shenzhen',venue:'OCT-LOFT',date:'2026.07.22',status:'UPCOMING'},
+];
+
+/* ═══════════════════════════════════════════════
+   SS99 SANDWICH BOARDS  (Phase 4)
+═══════════════════════════════════════════════ */
+const BOARDS={
+  '01':'ARCHIVE RESEARCH\nPRINTED MATTER\n\nSeven volumes. 1989–2026.\nCross-ref via Milletrage\nThread count: variable\nMaterial: cellulose, pigment, time',
+  '02':'PRE-COLLECTION\nPREPARATION\n\nPacking documentation\nShipping forms\nRétrécirage protocol active\nFour cities. One argument.',
+  '03':'FALL–WINTER 2026\nPARIS · 82 LOOKS\n\nVenue: undisclosed\nMedia: restricted\nWhite tape applied\nFace: deliberately absent',
+  '04':'ARTISANAL\nCOLLECTION\n\nHand. Labor. Atelier.\nRue Saint-Maur, Paris XI\nTechnique: décomposition\nSince 1989, repeated daily',
+  '05':'ANONYMITY\nEXHIBITION\n\nThe mask is not a disguise\nIt is the absence of one\nCatalogue: unnumbered\nFace: refused',
+  '06':'TABI EXHIBITION\nCOLLECTORS SERIES\n\nSplit-toe. 1988.\nStill in production.\nAnatomical correction device\nFloor beneath everything',
+  '07':'BIANCHETTO\nEXPERIENCE\n\nWhite paint. White shoe.\nErasure as creative act.\nMilieu: undefined\nThe fracture is the timeline',
+};
+
+/* ═══════════════════════════════════════════════
+   ARCHIVE DATA
+═══════════════════════════════════════════════ */
+const ARCHIVE=[
+  {id:'01',name:'Announcement',full:'Maison Margiela\nFolders Announcement',
+   concept:'Brand Identity · Archive Research · Press Communication',
+   narrative:'The announcement arrives as a single line. Inside: the architecture of a season not yet begun. Every press release, every logo iteration, every photographer credit — a map drawn before the territory exists.',
+   files:97,dates:'2026',media:{JPG:84,MP4:3,PNG:1,PDF:2},
+   connects:[{to:3,desc:'The announcement frames the show — every press kit anticipates the runway'},{to:4,desc:'Archive research seeds the artisanal concept'}],
+   folders:[
+     {n:'Project Logo',f:[['MM_Folders_Logo_Dropbox','jpg'],['MM_Folders_Logo_Link','jpg'],['MM_Folders_Logo','png']]},
+     {n:'Archive Research · Printed',f:[...Array.from({length:8},(_,i)=>[`MM_Folders_Printed_Research_0${i+1}`,'jpg']),...[['MM_Folders_Printed_Research_09','mp4'],['MM_Folders_Printed_Research_10','mp4'],['MM_Folders_Printed_Research_11','mp4']]]},
+     {n:'Archive Research · Digital',f:[['Artisanal — Arnaud Lajeunie ×4','jpg'],['Artisanal — Bill Cunningham','jpg'],['Artisanal — Britt Lloyd ×3','jpg'],['Artisanal — Edouard Caupeil','jpg'],['Artisanal — Giovanni Giannoni ×8','jpg'],['Artisanal — Marina Faust ×12','jpg'],['Artisanal — Melanie & Ramon ×4','jpg'],['Anonymity — Anders Edström ×2','jpg'],['Anonymity — Edouard Caupeil ×7','jpg'],['Anonymity — Giovanni Giannoni ×7','jpg'],['Anonymity — Tyrone Lebon ×2','jpg'],['Tabi — Anders Edström','jpg'],['Tabi — Bill Cunningham','jpg'],['Tabi — Tatsuya Kitayama ×2','jpg'],['Bianchetto — Anders Edström ×2','jpg'],['Bianchetto — Giovanni Giannoni ×3','jpg']]},
+     {n:'Save The Date',f:[['MM_Folders_Save_The_Date_2026','jpg']]},
+     {n:'Press Release',f:[['MM_Folders_Press Release_ENG','pdf'],['MM_Folders_Press Release_CN','pdf']]}
+   ]},
+  {id:'02',name:'Preparation',full:'Preparation\n& Teaser',
+   concept:'Logistics · China Tour · Campaign Teaser Assets',
+   narrative:'The exhibition travels. Four cities — Shanghai, Beijing, Chengdu, Shenzhen — each receiving the same archive in different light. Packing lists become poetry when what is being packed is 37 years of a brand\'s nervous system.',
+   files:64,dates:'2026',media:{JPG:43,MP4:9,PDF:5},
+   connects:[{to:2,desc:'Preparation feeds directly into the FW26 show machinery'},{to:3,desc:'Artisanal teasers are the preparation\'s visual language'}],
+   folders:[
+     {n:'Project Documentation',f:[['MM_Folders_Internal-Project-Brief','pdf'],['MM_Folders_Project_Timeline','pdf']]},
+     {n:'Itinerary · China Tour',f:[['01_Schedule_Shanghai','pdf'],['02_Schedule_Beijing','pdf'],['03_Schedule_Chengdu','pdf'],['04_Schedule_Shenzhen','pdf']]},
+     {n:'Packing Documentation',f:[...Array.from({length:8},(_,i)=>[`MM_Folders_Packing_${i+1}`,'jpg']),...Array.from({length:6},(_,i)=>[`MM_Folders_Packing_${i+9}`,'mp4'])]},
+     {n:'Teaser Assets · Artisanal',f:[['Screen Testing','mp4'],...Array.from({length:12},(_,i)=>[`MM_Folders_Artisanal_Teaser_${i+1}`,'jpg'])]},
+     {n:'Teaser Assets · Anonymity',f:[['Screen Testing','mp4'],...Array.from({length:6},(_,i)=>[`MM_Folders_Anonymity_Teaser_${i+1}`,'jpg'])]},
+     {n:'Teaser Assets · Tabi',f:[['Screen Testing','mp4'],...Array.from({length:6},(_,i)=>[`MM_Folders_Tabi_Teaser_${i+1}`,'jpg'])]},
+     {n:'Teaser Assets · Bianchetto',f:[['Screen Testing','mp4'],...Array.from({length:5},(_,i)=>[`MM_Folders_Bianchetto_Teaser_${i+1}`,'jpg']),...[['MM_Folders_Bianchetto_Teaser_6','mp4'],['MM_Folders_Bianchetto_Teaser_7','mp4']]]}
+   ]},
+  {id:'03',name:'FW26 Show',full:'Fall–Winter\n2026 Show',
+   concept:'76 Looks · Live Runway · Venue · Full Show Film',
+   narrative:'Seventy-six moments constitute one continuous gesture. The runway is not a catwalk — it is a diagram. Every look is a coordinate in the brand\'s evolving mathematics, and the venue, empty, is the equation before the variables arrive.',
+   files:152,dates:'2026',media:{JPG:115,MP4:18,PDF:1},
+   connects:[{to:3,desc:'The show synthesizes artisanal heritage into a single evening'},{to:4,desc:'Every model walks in Anonymity — masks or absence of face'},{to:5,desc:'76 looks, all on Tabi boots'}],
+   folders:[
+     {n:'Teaser',f:Array.from({length:13},(_,i)=>[`MM_Folders_FW26 Show_Teaser_${i+1}`,'jpg'])},
+     {n:'Invitation',f:[['MM_Folders_FW26 Show_invitation_01','jpg'],['MM_Folders_FW26 Show_invitation_02','jpg']]},
+     {n:'Fittings',f:Array.from({length:8},(_,i)=>[`MM_Folders_FW26 Show_Fittings_3x4_${i+1}`,'jpg'])},
+     {n:'Collection Looks 001–076',f:Array.from({length:76},(_,i)=>[`MM_Folders_FW26 Show Look_${String(i+1).padStart(4,'0')}`,'jpg'])},
+     {n:'Hero Looks',f:Array.from({length:12},(_,i)=>[`MM_Folders_FW26 Show_Hero Looks_3x4_${i+1}`,'jpg'])},
+     {n:'Collection Films',f:[...Array.from({length:6},(_,i)=>[`MM_Folders_FW26 Show_Full Look_Loop_0${i+1}_3x4_v2`,'mp4']),...[['MM_Folders_FW26 Show_Look 05_3x4','mp4'],['MM_Folders_FW26 Show_Look 08_3x4','mp4'],['MM_Folders_FW26 Show_Look 18_3x4','mp4'],['MM_Folders_FW26 Show_Look 32_3x4','mp4']]]},
+     {n:'Full Show Video',f:[['MM_Folders_FW26 Show_Full Video_9x16','mp4']]},
+     {n:'Venue · Empty Set',f:[['MM_Folders_FW26 Show_Empty Set_3x4_1','jpg'],['MM_Folders_FW26 Show_Empty Set_3x4_2','jpg'],['MM_Folders_FW26 Show_Empty Set_16x9','mp4']]},
+     {n:'Press Release',f:[['FW26_Folder_FW26 Show_Press release','pdf']]}
+   ]},
+  {id:'04',name:'Artisanal',full:'Artisanal\nExhibition',
+   concept:'The Chaos Knot · Raw Material → Labor Hours → Final Output',
+   narrative:'The Artisanal collection is the brand\'s oldest question asked again. Since 1989, at the atelier on Rue Saint-Maur, the process has been the concept. A cassette woven into a jacket. An x-ray dress. A broken plates vest from AW89. The hand is the instrument. The atelier is the laboratory. Every seam is a signature the wearer cannot read.',
+   files:82,dates:'1989–2025',media:{JPG:51,MP4:8,MOV:2,PDF:5},
+   connects:[{to:4,desc:'The mask is born from the artisanal hand — both are acts of construction'},{to:5,desc:'The Tabi boot walks every atelier since 1989'},{to:6,desc:'Bianchetto IS artisanal — white paint applied by hand'}],
+   folders:[
+     {n:'Initial Research Archive',f:[['Archives-Dept Initial Research','pdf'],['2005','jpg'],['2022 Look 19','jpg'],['2022 Look 31','jpg'],['2022 Look 58','jpg'],['2024 Collection Notes','pdf'],['2024 Exhibition Look 21','jpg'],['2024 Exhibition','jpg'],['2024 Fitting Book Look 17','jpg'],['2024 Fitting Book Look 4','jpg'],['2024 Inspiration Books','jpg'],['2024 Invitation','jpg'],['2024 Key Looks Edit','mov'],['2024 Look 21','jpg'],['2024 Look 27','jpg'],['2024 Savoir Faire Cassetting','mp4'],['2024 Savoir Faire Look 18','mov'],['2024 X-ray Dress','jpg'],['2025 Close-up','jpg'],['2025 Collection Notes','pdf'],['2025 Highlights','mp4'],['2025 Invitation','jpg'],['2025 Isolated Looks','mp4'],['2025 Jewels','mp4'],['2025 Look 1','jpg'],['2025 Look 16','jpg'],['2025 Look 20','jpg'],['2025 Look 39','jpg'],['2025 Look Book','pdf'],['2025 Savoir Faire Look 4','mp4'],['Archive Footage','mp4'],['Atelier Process','jpg'],['Atelier Process 02','jpg'],['Atelier Process 03','jpg'],['Atelier 01','jpg'],['Atelier 02','jpg'],['Atelier 03','jpg'],['AW05','jpg'],['AW06 01','jpg'],['AW06 02','jpg'],['AW06 Invitation','jpg'],['AW07 01','jpg'],['AW07 02','jpg'],['AW08 01','jpg'],['AW08 02','jpg'],['AW08','mp4'],['AW20 Collection Notes','pdf'],['AW89 Broken Plates Vest','pdf'],['Fall 2014 Fittings Look 1','jpg'],['Fall 2014 Fittings Look 4','jpg'],['Fall 2014 Fittings Look 8','jpg'],['Fall 2014 Process','jpg'],['Fall 2017 Look 10','jpg'],['FW05','jpg'],['FW06 Ski Jacket','jpg'],["L'Officiel 2006",'jpg'],['Le Figaro 2006','jpg'],['Le Figaro 2025','jpg'],['Line 0 Edit','mp4'],['MM HQ','jpg'],['Process','jpg'],['Rue St Maur Atelier 01','jpg'],['Rue St Maur Atelier 02','jpg'],['Rue St Maur','jpg'],['Spring 2012','jpg'],['Spring 2015 Look 1','jpg'],['Spring 2017 Look 19','jpg'],['Spring 2017 Look 24','jpg'],['Spring 2017 Look 25','jpg'],['SS06 01','jpg'],['SS06 02','jpg'],['SS06 03','jpg'],['SS08','jpg'],['SS90','jpg'],['Team','jpg']]},
+     {n:'Teaser · Look Preview',f:Array.from({length:12},(_,i)=>[`MM_Folders_Artisanal_Teaser_${i+1}`,'jpg'])}
+   ]},
+  {id:'05',name:'Anonymity',full:'Anonymity\nExhibition',
+   concept:'The Masked Identity · Anatomy of Concealment · 1989–2025',
+   narrative:'The mask is not a disguise. It is a declaration. Since SS90, the concealment of the face has been the brand\'s most direct assertion: the work speaks, the maker does not. To hide the face is to insist that the garment carries all meaning. The Anonymity archive maps 36 years of this refusal to be seen.',
+   files:62,dates:'1989–2025',media:{JPG:45,MP4:4,MOV:1,PDF:1},
+   connects:[{to:3,desc:'Anonymity is born from the artisanal impulse to let the work speak'},{to:5,desc:'The masked wearer always stands on Tabi ground'},{to:6,desc:'Bianchetto\'s white surface echoes the blank anonymity of the mask'}],
+   folders:[
+     {n:'Initial Research Archive',f:[['Archives-Dept Initial Research','pdf'],['1989','jpg'],['Archive Footage','mp4'],['Artisanal 2022','jpg'],['Artisanal 2024 Look 27','jpg'],['Artisanal 2024 Look 29','jpg'],['Artisanal 2025 Final Running Order Masks','pdf'],['Artisanal 2025 Look 19','jpg'],['Artisanal 2025 Look 22','jpg'],['Artisanal 2025 Look 31','jpg'],['Artisanal 2025 Look 37','jpg'],['Artisanal 2025 Look 4','jpg'],['Artisanal 2025 Look 40 & 41','jpg'],['Artisanal 2025 Look 42','mp4'],['Artisanal 2025 Look 49','jpg'],['Artisanal 2025 Mask Edit','mov'],['Artisanal 2025 Savoir Faire Mask','mp4'],['Artisanal Fall 2013 Look 1','jpg'],['Artisanal Fall 2013 Look 4','jpg'],['Artisanal Fall 2013 Look 5','jpg'],['Artisanal FW06 Look 1','jpg'],['Artisanal FW06 Look 19','jpg'],['Artisanal SS07 Look 10','jpg'],['Artisanal SS08 Look 15','jpg'],['Artisanal SS90 Look 1','jpg'],['Artisanal SS90 Look 2','jpg'],['Co-Ed AW21 Look 5','jpg'],['Co-Ed AW22 Look 1','jpg'],['Co-Ed AW22 Look 6','jpg'],['Co-Ed AW23 Look 2','jpg'],['Co-Ed AW24 Look 40','jpg'],['Co-Ed AW25 Look 17','jpg'],['Co-Ed SS20 Look 35','jpg'],['Co-Ed SS21 Look 4','jpg'],['Co-Ed SS25 Look 3','jpg'],['Defilé AW23 Look 35','jpg'],['Defilé AW24 Look 31','jpg'],['Defilé FW26 Show Look 1','jpg'],['Defilé FW26 Show Look 11','jpg'],['Artisanal 2025 Savoir Faire Mask 02','mp4']]},
+     {n:'Teaser · Mask Preview',f:Array.from({length:6},(_,i)=>[`MM_Folders_Anonymity_Teaser_${i+1}`,'jpg'])}
+   ]},
+  {id:'06',name:'Tabi',full:'Tabi\nExhibition',
+   concept:'The Split-Toe Silhouette · Collectors Edition · Archive 1991–2025',
+   narrative:'The Tabi boot has walked every runway since AW89. Derived from Japanese tabi socks worn by Kabuki actors, the split toe is the brand\'s most persistent signature — the only constant in 37 years of deliberate inconsistency. It has been in every atelier, every fitting room, every archive photograph. It is the floor beneath everything.',
+   files:45,dates:'1991–2025',media:{JPG:36,MP4:2,MOV:1,PDF:2,TIF:1,PNG:1},
+   connects:[{to:3,desc:'Artisanal gives Tabi its philosophical home — made by hand, worn by the anonymous'},{to:4,desc:'The masked face requires the split-toe foot — they define each other'}],
+   folders:[
+     {n:'Initial Research Archive',f:[['Archives-Dept Initial Research','pdf'],['1991','jpg'],['1998','jpg'],['2012','jpg'],['2018','png'],['Andam 2005','tif'],['Archive Footage','mp4'],['Archive Shoe AW03','jpg'],['Archive Shoe','jpg'],['Archive Storage','jpg'],['Artisanal 2025 01','jpg'],['Artisanal 2025 02','jpg'],['Artisanal 2025 Edit','mov'],['Artisanal AW12','jpg'],['AW03','jpg'],['AW89','jpg'],['AW95','jpg'],['Backstage AW14','jpg'],['Collectors Series Item 01 2025','jpg'],['Drawing Martin Margiela 01','pdf'],['Drawing Martin Margiela 02','pdf'],['Editorial 01','jpg'],['Editorial 02','jpg'],['FW25','jpg'],['Icons Collection 01','jpg'],['Icons Collection 02','jpg'],['Process 01','jpg'],['Process 02','jpg'],['Runway AW25 AVP 01','jpg'],['Runway AW25 AVP 02','jpg'],['SS07 Archive','jpg'],['SS92','jpg'],['Vintage Lot','jpg'],['x Reebok 2024','jpg'],['Archive Footage 02','mp4'],['Boot AW17','jpg'],['Boot SS18','jpg'],['Mule SS23','jpg']]},
+     {n:'Teaser · Collectors Preview',f:Array.from({length:6},(_,i)=>[`MM_Folders_Tabi_Teaser_${i+1}`,'jpg'])}
+   ]},
+  {id:'07',name:'Bianchetto',full:'Bianchetto\nExperience',
+   concept:'White Paint Decay · The Signature Technique · 1992–2026',
+   narrative:'Bianchetto is white shoe paint applied by hand to existing garments. It is the brand\'s most literal statement about time: the past is always present, and can always be painted over. The technique erases and preserves simultaneously. A coat from 1992, whitened in 2026, is both years at once. The fracture in the surface is the timeline made visible.',
+   files:38,dates:'1992–2026',media:{JPG:28,MP4:4},
+   connects:[{to:3,desc:'Bianchetto is the artisanal technique taken to its most radical conclusion'},{to:5,desc:'White paint over the surface mirrors the white anonymity of the mask'}],
+   folders:[
+     {n:'Initial Research Archive',f:[['Archives-Dept Initial Research','pdf'],['1992','jpg'],['2013','jpg'],['Archive Footage','mp4'],['Artisanal 2025 Look 7','jpg'],['Artisanal 2025 Look 4','jpg'],['Artisanal 2025 Look 5','jpg'],['Artisanal 2025 Savoir Faire','mp4'],['Artisanal Fall 2019 Look 4','jpg'],['Artisanal Spring 2013 Look 2','jpg'],['AW17','jpg'],['AW19','jpg'],['AW25 AVP 5AC','jpg'],['AW25 AVP Miley Cyrus','jpg'],['AW25 AVP Tabi','jpg'],['AW96 01','jpg'],['AW96 02','jpg'],['Co-Ed SS16','jpg'],['Co-Ed SS20 Look 13','jpg'],['Co-Ed SS24 01','jpg'],['Co-Ed SS24 02','jpg'],['Co-Ed SS24 03','jpg'],['Co-Ed SS26 Teaser','mp4'],['Icons Collection','jpg'],['MMxReebok 2021','jpg'],['Signature White 2022 01','jpg'],['Signature White 2022 02','jpg'],['SS20','jpg'],['SS92','jpg'],['SS99','jpg'],['Bianchetto Archival Reference','jpg']]},
+     {n:'Teaser · How-to Preview',f:[...Array.from({length:5},(_,i)=>[`MM_Folders_Bianchetto_Teaser_${i+1}`,'jpg']),...[['MM_Folders_Bianchetto_Teaser_6','mp4'],['MM_Folders_Bianchetto_Teaser_7','mp4']]]}
+   ]}
+];
+
+const GRAPH=[
+  {a:0,b:3,w:.5,rel:'Announcement reveals the Artisanal soul'},
+  {a:1,b:2,w:.6,rel:'Preparation becomes performance'},
+  {a:2,b:3,w:.8,rel:'The show synthesizes artisanal heritage'},
+  {a:2,b:4,w:.7,rel:'Every model walks masked or absent'},
+  {a:2,b:5,w:.75,rel:'76 looks — all on Tabi ground'},
+  {a:3,b:4,w:1, rel:'The hand creates the mask'},
+  {a:3,b:5,w:.9,rel:'The boot walks every atelier'},
+  {a:3,b:6,w:1, rel:'White paint is artisanal technique'},
+  {a:4,b:5,w:.8,rel:'The masked face requires the split-toe foot'},
+  {a:5,b:6,w:.7,rel:'The white surface echoes the white mask'},
+  {a:4,b:6,w:.6,rel:'Anonymity and decay share the same white'},
+  {a:0,b:1,w:.4,rel:'The announcement archives the preparation'}
+];
+
+/* ═══════════════════════════════════════════════
+   CANVAS · DPR-AWARE  (Phase 5)
+═══════════════════════════════════════════════ */
+const cvs=document.getElementById('cvs');
+const ctx=cvs.getContext('2d');
+let W,H,DPR,nodePos=[],allStrands=[],activeIdx=null,animT=0,focusFactor=1,pulseT=0,lastTs=0;
+
+function resize(){
+  DPR=window.devicePixelRatio||1;
+  W=window.innerWidth;H=window.innerHeight;
+  cvs.width=W*DPR;cvs.height=H*DPR;
+  cvs.style.width=W+'px';cvs.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  computeNodePos();
+}
+window.addEventListener('resize',resize,{passive:true});
+
+/* ═══════════════════════════════════════════════
+   BEZIER MATH
+═══════════════════════════════════════════════ */
+function rng(s){let x=s+1;return()=>{x=(x*16807)%2147483647;return(x-1)/2147483646}}
+
+function bpt(t,x0,y0,x1,y1,x2,y2,x3,y3){
+  const m=1-t;
+  return{
+    x:m*m*m*x0+3*m*m*t*x1+3*m*t*t*x2+t*t*t*x3,
+    y:m*m*m*y0+3*m*m*t*y1+3*m*t*t*y2+t*t*t*y3
+  };
+}
+
+/* Draw bezier t0→t1, optional taper, optional red (Trace Red) */
+function drawSeg(s,t0,t1,op,lw,fadeT,isRed){
+  const len=t1-t0;
+  if(len<=0||op<0.006) return;
+  const STEPS=Math.max(3,Math.floor(len*55));
+  for(let i=0;i<STEPS;i++){
+    const ta=t0+(i/STEPS)*len,tb=t0+((i+1)/STEPS)*len;
+    const pa=bpt(ta,s.x0,s.y0,s.x1,s.y1,s.x2,s.y2,s.x3,s.y3);
+    const pb=bpt(tb,s.x0,s.y0,s.x1,s.y1,s.x2,s.y2,s.x3,s.y3);
+    let fade=1;
+    if(fadeT>0&&ta>t0+len*(1-fadeT)){
+      fade=Math.max(0,1-(ta-(t0+len*(1-fadeT)))/(len*fadeT));
+    }
+    ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.lineTo(pb.x,pb.y);
+    ctx.strokeStyle=isRed?`rgba(255,0,0,${op*fade})`:`rgba(13,13,13,${op*fade})`;
+    ctx.lineWidth=lw*Math.max(0.22,fade);
+    ctx.stroke();
+  }
+}
+
+/* Pulse tracer: bright red "light" moving along strand */
+function drawPulse(s,t,lw){
+  const hl=0.09;
+  const t0=Math.max(0,t-hl),t1=Math.min(1,t+hl);
+  if(t1<=t0) return;
+  const len=t1-t0;const STEPS=7;
+  for(let i=0;i<STEPS;i++){
+    const ta=t0+(i/STEPS)*len,tb=t0+((i+1)/STEPS)*len;
+    const pa=bpt(ta,s.x0,s.y0,s.x1,s.y1,s.x2,s.y2,s.x3,s.y3);
+    const pb=bpt(tb,s.x0,s.y0,s.x1,s.y1,s.x2,s.y2,s.x3,s.y3);
+    const mid=(ta+tb)/2-t0;const pf=Math.sin(mid/len*Math.PI);
+    ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.lineTo(pb.x,pb.y);
+    ctx.strokeStyle=`rgba(255,0,0,${pf*.92})`;
+    ctx.lineWidth=lw*3.2;ctx.stroke();
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   STRAND GENERATORS
+═══════════════════════════════════════════════ */
+function VW(nx){return Math.max(W*.85,W-nx)}
+
+function broadcast(nx,ny,idx,count,seed){
+  const strands=[];
+  for(let i=0;i<count;i++){
+    const r=rng(seed*100+i*37);
+    /* Full 270° spread — strands reach all quadrants of the canvas */
+    const angle=-Math.PI*.8+(r()*Math.PI*1.6);
+    const dist=W*.35+r()*W*.6;
+    const ex=Math.max(10,Math.min(W-10,nx+Math.cos(angle)*dist));
+    const ey=Math.max(10,Math.min(H-10,ny+Math.sin(angle)*dist));
+    /* Control points swing broadly through canvas space */
+    const sw1=(r()-.5)*H*.9,sw2=(r()-.5)*W*.5;
+    strands.push({
+      x0:nx+(r()-.5)*12,y0:ny+(r()-.5)*18,
+      x1:nx+W*.08+r()*W*.18+sw2*.2,y1:ny+sw1*.35+r()*60-30,
+      x2:nx+(ex-nx)*.55+(r()-.5)*W*.28,y2:ny+(ey-ny)*.55+(r()-.5)*H*.32,
+      x3:ex,y3:ey,
+      lw:.2+r()*.5,owner:idx,type:'broadcast',_po:r()
+    });
+  }
+  return strands;
+}
+
+function bridge(ax,ay,bx,by,idxA,idxB,count,seed){
+  const strands=[];
+  for(let i=0;i<count;i++){
+    const r=rng(seed*200+i*53);
+    const swingX=(r()-.5)*W*.5,swingY=(r()-.5)*H*.65;
+    const mx=(ax+bx)/2+swingX,my=(ay+by)/2+swingY;
+    strands.push({
+      x0:ax+(r()-.5)*14,y0:ay+(r()-.5)*20,
+      x1:ax+(mx-ax)*.7+(r()-.5)*80,y1:ay+(my-ay)*.7+(r()-.5)*90,
+      x2:bx-(bx-mx)*.7+(r()-.5)*80,y2:by-(by-my)*.7+(r()-.5)*90,
+      x3:bx+(r()-.5)*14,y3:by+(r()-.5)*20,
+      lw:.2+r()*.26,ownerA:idxA,ownerB:idxB,type:'bridge',_po:r()
+    });
+  }
+  return strands;
+}
+
+function rebuildStrands(){
+  if(!nodePos.length) return;
+  allStrands=[];
+  ARCHIVE.forEach((f,i)=>{
+    if(!nodePos[i]) return;
+    const [nx,ny]=nodePos[i];
+    allStrands.push(...broadcast(nx,ny,i,Math.floor(f.files/3.5),i*997));
+  });
+  GRAPH.forEach((g,gi)=>{
+    if(!nodePos[g.a]||!nodePos[g.b]) return;
+    const [ax,ay]=nodePos[g.a],[bx,by]=nodePos[g.b];
+    allStrands.push(...bridge(ax,ay,bx,by,g.a,g.b,Math.floor(g.w*16)+4,gi*1337));
+  });
+}
+
+function strandRelevance(s,idx){
+  if(s.type==='broadcast') return s.owner===idx?1:0.06;
+  if(s.type==='bridge') return(s.ownerA===idx||s.ownerB===idx)?0.65:0.04;
+  return 0.05;
+}
+
+/* ═══════════════════════════════════════════════
+   GHOST LAYER  (Phase 3)
+═══════════════════════════════════════════════ */
+const ghost=document.getElementById('ghost');
+let ghostSrc='';
+function setGhost(src){
+  if(src===ghostSrc) return;ghostSrc=src;
+  ghost.style.opacity=0;
+  setTimeout(()=>{ghost.style.backgroundImage=`url("${src}")`;ghost.style.opacity=0.07;},380);
+}
+
+/* ═══════════════════════════════════════════════
+   IMPLOSION  (Phase 3)
+═══════════════════════════════════════════════ */
+let implosion=null;
+function lerp(a,b,t){return a+(b-a)*t}
+
+function triggerImplosion(cx,cy,idx){
+  const rip=document.createElement('div');
+  rip.className='rip';rip.style.left=cx+'px';rip.style.top=cy+'px';
+  document.body.appendChild(rip);setTimeout(()=>rip.remove(),700);
+  if(navigator.vibrate) navigator.vibrate([25,15,25]);
+  implosion={cx,cy,idx,t:0};
+}
+
+/* ═══════════════════════════════════════════════
+   MAIN LOOP  (Phase 5: 60fps, DPR-clean)
+═══════════════════════════════════════════════ */
+function loop(ts){
+  const dt=Math.min(ts-lastTs,50);lastTs=ts;
+  ctx.clearRect(0,0,W,H);
+
+  if(activeIdx!==null) animT=Math.min(animT+dt*.00058,1.2);
+  pulseT=(pulseT+dt*.00044)%1;
+
+  if(implosion){
+    /* Phase 3: Mass implosion — strands converge on touch point */
+    implosion.t=Math.min(implosion.t+dt*.0038,1);
+    const ease=1-Math.pow(1-implosion.t,3);
+    allStrands.forEach(s=>{
+      const imp={
+        x0:s.x0,y0:s.y0,
+        x1:lerp(s.x1,implosion.cx,ease*.5),y1:lerp(s.y1,implosion.cy,ease*.5),
+        x2:lerp(s.x2,implosion.cx,ease*.82),y2:lerp(s.y2,implosion.cy,ease*.82),
+        x3:lerp(s.x3,implosion.cx,ease),y3:lerp(s.y3,implosion.cy,ease),
+      };
+      drawSeg(imp,0,1,(1-ease*.88)*.45,.45,0,ease>.35);
+    });
+    if(implosion.t>=1){openModal(implosion.idx);implosion=null;}
+  } else {
+    allStrands.forEach(s=>{
+      const rel=activeIdx!==null?strandRelevance(s,activeIdx)*focusFactor:0.055;
+      if(rel<0.007) return;
+      const prog=Math.min(animT,1);
+      /* All strands: pure black ink — opacity encodes connectivity weight */
+      drawSeg(s,0,prog,rel*(s.lw>.45?.9:.75),s.lw,.28,false);
+    });
+  }
+
+  requestAnimationFrame(loop);
+}
+
+/* ═══════════════════════════════════════════════
+   SET ACTIVE
+═══════════════════════════════════════════════ */
+function setActive(idx){
+  if(activeIdx===idx) return;
+  activeIdx=idx;animT=0;
+  const f=ARCHIVE[idx];
+  const src=GALLERY[f.id]&&GALLERY[f.id][0]&&GALLERY[f.id][0].f[0];
+  if(src) setGhost(src);
+  document.getElementById('info-a').innerHTML=`Active: <b>${f.name}</b>`;
+  document.querySelectorAll('.vs-node').forEach((n,j)=>n.classList.toggle('on',j===idx));
+  document.querySelectorAll('.fc').forEach((n,j)=>n.classList.toggle('on',j===idx));
+  updateSVGCallout(idx);
+}
+
+/* ═══════════════════════════════════════════════
+   BUILD DESKTOP VISUAL STRIP  (Phase 1)
+═══════════════════════════════════════════════ */
+function buildStrip(){
+  const strip=document.getElementById('strip');strip.innerHTML='';
+  ARCHIVE.forEach((f,i)=>{
+    const node=document.createElement('div');
+    node.className='vs-node';node.dataset.num=`0${i+1}`;node.dataset.i=i;
+    const img=document.createElement('img');
+    img.className='vs-img';img.src=THUMBS[f.id]||IMG[f.id]&&IMG[f.id][0]||'';img.alt='';
+    node.appendChild(img);
+    node.addEventListener('mouseenter',()=>{setActive(i);updateCallout(i);showCo()});
+    node.addEventListener('mouseleave',hideCo);
+    node.addEventListener('click',()=>openModal(i));
+    node.addEventListener('dblclick',e=>{e.preventDefault();showBoard(i)});
+    strip.appendChild(node);
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   BUILD MOBILE FILM STRIP  (Phase 1)
+═══════════════════════════════════════════════ */
+function buildFilm(){
+  const film=document.getElementById('film');film.innerHTML='';
+  ARCHIVE.forEach((f,i)=>{
+    const card=document.createElement('div');
+    card.className='fc';card.dataset.idx=i;
+    /* Phase 3: Long-press → mass implosion */
+    let pressTimer;
+    card.addEventListener('touchstart',e=>{
+      pressTimer=setTimeout(()=>{
+        const t=e.touches[0];triggerImplosion(t.clientX,t.clientY,i);
+      },500);
+    },{passive:true});
+    card.addEventListener('touchmove',()=>clearTimeout(pressTimer),{passive:true});
+    card.addEventListener('touchend',()=>clearTimeout(pressTimer),{passive:true});
+    card.addEventListener('click',()=>openModal(i));
+    const img=document.createElement('img');
+    img.className='fc-img';img.src=THUMBS[f.id]||IMG[f.id]&&IMG[f.id][0]||'';img.alt='';
+    const bar=document.createElement('div');bar.className='fc-bar';
+    const num=document.createElement('div');num.className='fc-num';
+    num.textContent=`0${i+1} / 07  ·  ${f.name.toUpperCase()}`;
+    /* Phase 4: Academic terms in card footer */
+    const acad=document.createElement('div');acad.className='fc-acad';
+    acad.textContent=(ACADEMIC[f.id]||[]).join('  ·  ');
+    card.append(img,bar,num,acad);film.appendChild(card);
+  });
+
+  /* Phase 2: Scroll-triggered strand activation */
+  film.addEventListener('scroll',()=>{
+    const mid=film.scrollTop+film.clientHeight/2;
+    const cards=[...document.querySelectorAll('.fc')];
+    let best=0,bestDist=Infinity;
+    cards.forEach((c,i)=>{
+      const cc=c.offsetTop+c.offsetHeight/2;
+      const d=Math.abs(mid-cc);
+      if(d<bestDist){bestDist=d;best=i;}
+    });
+    /* Phase 2: Focus factor — how centred the active card is */
+    const ac=cards[best];
+    if(ac){
+      const cc=ac.offsetTop+ac.offsetHeight/2;
+      const dist=Math.abs(mid-cc)/ac.offsetHeight;
+      focusFactor=Math.max(0,1-dist*1.6);
+    }
+    setActive(best);
+  },{passive:true});
+}
+
+/* ═══════════════════════════════════════════════
+   NODE POSITIONS
+═══════════════════════════════════════════════ */
+function computeNodePos(){
+  const isMobile=window.innerWidth<768;
+  if(isMobile){
+    const mg=H*.12;
+    ARCHIVE.forEach((_,i)=>{nodePos[i]=[55,mg+i*(H-2*mg)/6];});
+    rebuildStrands();
+  } else {
+    requestAnimationFrame(()=>{
+      const stripEl=document.getElementById('strip');
+      if(!stripEl) return;
+      const sr=stripEl.getBoundingClientRect().right;
+      document.querySelectorAll('.vs-node').forEach((n,i)=>{
+        const r=n.getBoundingClientRect();
+        nodePos[i]=[sr,r.top+r.height/2];
+      });
+      rebuildStrands();
+    });
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   CALLOUT (desktop)
+═══════════════════════════════════════════════ */
+const co=document.getElementById('co');
+let coTimer;
+function showCo(){clearTimeout(coTimer);co.classList.add('show')}
+function hideCo(){coTimer=setTimeout(()=>co.classList.remove('show'),220)}
+co.addEventListener('mouseenter',()=>clearTimeout(coTimer));
+co.addEventListener('mouseleave',hideCo);
+
+function updateCallout(i){
+  const f=ARCHIVE[i];
+  const imgs=document.getElementById('co-imgs');imgs.innerHTML='';
+  (IMG[f.id]||[]).slice(0,3).forEach(src=>{
+    const img=document.createElement('img');
+    img.className='co-img';img.src=src;img.alt='';
+    img.onclick=()=>lightbox(src);imgs.appendChild(img);
+  });
+  document.getElementById('co-id').textContent=`Archive Node 0${i+1} of 07`;
+  document.getElementById('co-name').textContent=f.full.replace('\n',' ');
+  document.getElementById('co-concept').textContent=f.concept;
+  /* Phase 4: Academic terms in callout */
+  document.getElementById('co-acad').textContent=(ACADEMIC[f.id]||[]).join('  ·  ');
+  document.getElementById('co-files').textContent=f.files;
+  document.getElementById('co-dates').textContent=f.dates;
+  document.getElementById('co-med').textContent=Object.entries(f.media).map(([k,v])=>`${v} ${k}`).join(' · ');
+  document.getElementById('co-ct').textContent=f.connects.length+' nodes';
+  document.getElementById('co-conn').innerHTML='→ '+f.connects.map(c=>`<span>0${c.to+1}</span> <b>${ARCHIVE[c.to].name}</b>`).join(' &nbsp;·&nbsp; ');
+  document.getElementById('co-btn').onclick=()=>openModal(i);
+  document.getElementById('narr').textContent=f.narrative;
+}
+
+/* ═══════════════════════════════════════════════
+   SVG TICK-MARK CALLOUTS  (Phase 3)
+═══════════════════════════════════════════════ */
+const svgEl=document.getElementById('svgl');
+
+function updateSVGCallout(idx){
+  svgEl.innerHTML='';
+  if(idx===null||!nodePos[idx]) return;
+  const [nx,ny]=nodePos[idx];
+  const vx=nx/W*1000,vy=ny/H*800;
+  const f=ARCHIVE[idx];
+  const terms=ACADEMIC[f.id]||[];
+
+  /* Academic term tick-marks */
+  terms.forEach((term,ti)=>{
+    const angle=-0.55+ti*.38;
+    const len=55+ti*18;
+    const tx=vx+Math.cos(angle)*len,ty=vy+Math.sin(angle)*len;
+
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',vx);line.setAttribute('y1',vy);
+    line.setAttribute('x2',tx);line.setAttribute('y2',ty);
+    line.setAttribute('class','svg-tick');
+    svgEl.appendChild(line);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>line.classList.add('draw')));
+
+    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx',tx);dot.setAttribute('cy',ty);
+    dot.setAttribute('r','1.8');dot.setAttribute('class','svg-dot');
+    svgEl.appendChild(dot);
+
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x',tx+4);txt.setAttribute('y',ty-2);
+    txt.setAttribute('class','svg-lbl');
+    txt.textContent=term;svgEl.appendChild(txt);
+  });
+
+  /* DNA connection relationship labels */
+  GRAPH.forEach((g,gi)=>{
+    if(g.a!==idx&&g.b!==idx) return;
+    const other=g.a===idx?g.b:g.a;
+    if(!nodePos[other]) return;
+    const [ox,oy]=nodePos[other];
+    const ox2=ox/W*1000,oy2=oy/H*800;
+    const r=rng(gi*317);
+    const mx=(vx+ox2)/2+(r()-.5)*70,my=(vy+oy2)/2+(r()-.5)*50;
+    const rt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    rt.setAttribute('x',mx);rt.setAttribute('y',my);
+    rt.setAttribute('class','svg-rel');rt.textContent=g.rel;
+    svgEl.appendChild(rt);
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   SANDWICH BOARD · SS99  (Phase 4)
+═══════════════════════════════════════════════ */
+function showBoard(idx){
+  const f=ARCHIVE[idx];
+  document.getElementById('board-text').textContent=BOARDS[f.id]||'';
+  document.getElementById('board-acad').textContent=(ACADEMIC[f.id]||[]).join('  ·  ');
+  document.getElementById('board').classList.add('show');
+}
+function closeBoard(){document.getElementById('board').classList.remove('show')}
+
+/* ═══════════════════════════════════════════════
+   EXHIBITION TICKER  (Phase 4)
+═══════════════════════════════════════════════ */
+function buildTicker(){
+  const wrap=document.getElementById('tick-wrap');
+  const items=[...EXHIBITIONS,...EXHIBITIONS].map(e=>`<span class="tick-item">
+    <span class="tick-city">${e.city}</span>&nbsp;·&nbsp;${e.venue}&nbsp;·&nbsp;${e.date}&nbsp;<span class="${e.status==='ACTIVE'?'tick-live':''}">[${e.status}]</span>
+  </span>`).join('');
+  wrap.innerHTML=items;
+}
+
+/* ═══════════════════════════════════════════════
+   MODAL
+═══════════════════════════════════════════════ */
+function xtClass(e){const x=(e||'').toLowerCase();return x==='mp4'||x==='mov'?'xv':x==='pdf'?'xp':x==='png'||x==='tif'?'xn':'xj'}
+
+function openModal(idx){
+  const f=ARCHIVE[idx];
+  /* Top bar */
+  document.getElementById('m-id').textContent=`0${idx+1} of 07 · ${f.dates}`;
+  document.getElementById('m-title').textContent=f.full.replace('\n',' ');
+  document.getElementById('m-conc').textContent=f.concept;
+
+  /* Image gallery — grouped by subfolder */
+  const gal=document.getElementById('m-gal');gal.innerHTML='';
+  (GALLERY[f.id]||[]).forEach(group=>{
+    const sec=document.createElement('div');sec.className='m-gal-section';
+    const lbl=document.createElement('div');lbl.className='m-gal-label';lbl.textContent=group.g;
+    sec.appendChild(lbl);
+    const grid=document.createElement('div');grid.className='m-gal-grid';
+    group.f.forEach(src=>{
+      const img=document.createElement('img');img.src=src;img.alt='';
+      img.onerror=()=>{img.style.display='none'};
+      img.onclick=()=>lightbox(src);grid.appendChild(img);
+    });
+    sec.appendChild(grid);gal.appendChild(sec);
+  });
+
+  /* Narrative — large readable text */
+  document.getElementById('m-narr').textContent=f.narrative;
+
+  /* Academic terms */
+  document.getElementById('m-acad').innerHTML=
+    `<div class="m-acad-head">Theoretical Framework</div>
+     <div class="m-acad-terms">${(ACADEMIC[f.id]||[]).map(t=>`<span class="m-acad-term">${t}</span>`).join('')}</div>`;
+
+  /* DNA connections — editorial cards */
+  document.getElementById('m-conn').innerHTML=
+    `<div class="m-conn-head">DNA Connections</div>`+
+    f.connects.map(c=>`<div class="m-conn-item">
+      <div class="m-conn-num">0${c.to+1}</div>
+      <div class="m-conn-body">
+        <div class="m-conn-lbl">${ARCHIVE[c.to].name}</div>
+        <div class="m-conn-desc">${c.desc}</div>
+      </div>
+    </div>`).join('');
+
+  /* Stats */
+  document.getElementById('m-stat').innerHTML=`
+    <div class="m-stat-block"><span class="m-sn">${f.files}</span><span class="m-sl">Files</span></div>
+    <div class="m-stat-block"><span class="m-sn">${f.folders.length}</span><span class="m-sl">Folders</span></div>
+    <div class="m-stat-block"><span class="m-sn">${f.dates.replace('–','\n')}</span><span class="m-sl">Date Range</span></div>`;
+
+  /* Media breakdown */
+  document.getElementById('m-med').innerHTML=
+    Object.entries(f.media).map(([k,v])=>`<span>${v} <b style="color:var(--k)">${k}</b></span>`).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+
+  /* Technical files — collapsed by default, built lazily on open */
+  const totalFiles=f.folders.reduce((a,sf)=>a+sf.f.length,0);
+  document.getElementById('m-toggle-count').textContent=`— ${totalFiles} files`;
+  const body=document.getElementById('m-body');body.innerHTML='';body.classList.remove('open');
+  const toggle=document.getElementById('m-toggle');toggle.classList.remove('open');
+  toggle.onclick=()=>{
+    const isOpen=body.classList.toggle('open');
+    toggle.classList.toggle('open',isOpen);
+    if(isOpen&&!body.childElementCount){
+      f.folders.forEach(sf=>{
+        if(!sf.f.length) return;
+        const d=document.createElement('div');d.className='m-sf';
+        d.innerHTML=`<div class="m-sf-h"><span>${sf.n}</span><span class="m-sf-c">${sf.f.length} files</span></div>`;
+        const ul=document.createElement('ul');ul.style.listStyle='none';
+        sf.f.forEach(([name,ext])=>{
+          const li=document.createElement('li');li.className='m-file';
+          li.innerHTML=`<span class="xt ${xtClass(ext)}">${ext}</span>${name}`;
+          ul.appendChild(li);
+        });
+        d.appendChild(ul);body.appendChild(d);
+      });
+    }
+  };
+
+  /* Open */
+  const modalEl=document.getElementById('modal');
+  modalEl.classList.add('open');
+  modalEl.scrollTop=0;
+  document.getElementById('mveil').classList.add('open');
+  document.querySelectorAll('.vs-node').forEach((n,j)=>n.classList.toggle('on',j===idx));
+}
+
+function closeModal(){
+  document.getElementById('modal').classList.remove('open');
+  document.getElementById('mveil').classList.remove('open');
+  document.querySelectorAll('.vs-node').forEach(n=>n.classList.remove('on'));
+}
+document.getElementById('mcl-x').onclick=closeModal;
+document.getElementById('mveil').onclick=closeModal;
+
+/* ═══════════════════════════════════════════════
+   LIGHTBOX
+═══════════════════════════════════════════════ */
+function lightbox(src){document.getElementById('lb-img').src=src;document.getElementById('lb').classList.add('open')}
+document.getElementById('lb').onclick=()=>document.getElementById('lb').classList.remove('open');
+document.getElementById('lb-x').onclick=e=>{e.stopPropagation();document.getElementById('lb').classList.remove('open')};
+
+/* ═══════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════ */
+buildStrip();
+buildFilm();
+buildTicker();
+resize();
+requestAnimationFrame(loop);
+
+setTimeout(()=>{
+  document.getElementById('intro').classList.add('out');
+  /* Auto-select first folder so animation starts immediately */
+  setActive(0);
+  const firstCard=document.querySelector('.fc');
+  if(firstCard) firstCard.classList.add('on');
+  setTimeout(()=>document.getElementById('intro').remove(),1000);
+},1800);
+</script>
+</body>
+</html>
